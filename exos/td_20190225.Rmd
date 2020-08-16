@@ -1,0 +1,89 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+_This post will differ from the rest of the blog in the sense that it will illustrate some Data Vizualization techniques, an aspect of my day to day job as a Data Analyst._
+
+_In a further post, once I will be satisfied enough with the shape and form of my website, I will outline the various steps I undertook to create this site in its current form (spoiler: lots of tweaks of existing templates that were placed together in here)_
+
+## 0. Load libraries
+```{r libs,warning=F, message=F, comment=F, results=F}
+library(tidyverse)
+library(lubridate)
+```
+
+## 1. Load the data
+The first thing we do is load the data. If you're not familiar with R, be aware that you can directly load the data from a Github repository by linking it to its raw page as we do here:
+```{r data,warning=FALSE, message=FALSE}
+trains_raw <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-02-26/full_trains.csv")
+
+small_trains <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-02-26/small_trains.csv") 
+```
+
+
+## 2. Analysis
+
+We now have access to our data and are eager to start exploring it. However, we must first reflect upon the range of possibilities that emanate from such a dataset. 
+
+### Exploring the causes of delays for the top 10 train stations in France.
+
+In order to avoid getting confused with the amount of angles we could dive into, it can be helpful to start with a rather concrete idea of what can be done. There is an infinite set of delay reasons that might be more or less relevants based on the train stations sizes. I wonder if, for the biggest ones, and for the smallest ones, the reason given is similar.
+
+I will therefore attempt the following steps:
+
+1. Isolating the biggest and smallest train stations in terms of passengers
+2. Reshaping the delay data 
+3. Results in table form
+4. Visualization
+
+#### 1. Isolating the biggest train stations in terms of passengers
+Let's first see which are the top and lowest stations in terms of total trips. In general, I would avoid some tiny stations with very few passengers by using a threshold of at least 100 trips. But a quick look at the departure stations indicated that there were only 59 stations in the dataset, so a filter has already been applied by the curators of the dataset. We will select the top 10 and bottom 10 as reference groups.
+
+```{r top_stations,warning=F,message=F}
+big_stations <- trains_raw %>% 
+  group_by(departure_station) %>% 
+  summarize(trips=sum(total_num_trips)) %>% 
+  arrange(desc(trips)) %>% 
+  top_n(10) 
+
+small_stations <- trains_raw %>% 
+  group_by(departure_station) %>% 
+  summarize(trips=sum(total_num_trips)) %>% 
+  arrange(-desc(trips)) %>% 
+  top_n(10) 
+```
+
+#### 2. Reshaping the delay data 
+Now that we know which trainstations we want to look at, we can also:
+
+* Add a dummy that indicates whether they're part of those largest or smallest stations
+* Reorganize the "delay reasons" variables
+  * Currently, the dataset is in wide format (some variables are spread out) and we want them in long format. More info about this very important nuance can be found [here](http://www.cookbook-r.com/Manipulating_data/Converting_data_between_wide_and_long_format/)
+
+The data ranges from 2015 to 2017. 
+Since the delay ratios vary per year, it's important to treat them accordingly.
+
+There are trains going for long trips and there are trains going for short trips. Do they differ? Could this be a better indicator of the delay factors than the simple departure station?
+
+
+```{r gather_data,warning=F,message=F}
+connections <- trains_raw %>% 
+  mutate(station_size = case_when(departure_station %in% big_stations$departure_station ~ "BIG",
+                                  departure_station %in% small_stations$departure_station ~ "SMALL"),
+         connection = str_c(departure_station,arrival_station),
+         date_full = str_c(year,month)) %>% 
+  filter(is.na(station_size) == F & year == 2017) %>% 
+  select(date_full,departure_station,arrival_station,connection,journey_time_avg,total_num_trips,
+         num_of_canceled_trains,num_late_at_departure,avg_delay_all_departing,num_arriving_late,
+         avg_delay_late_on_arrival,delay_cause_external_cause:delay_cause_travelers) %>% 
+  gather(key="delay_cause",value="ratio",starts_with("delay_cause"))
+
+connections %>% 
+  arrange(desc(journey_time_avg)) %>% 
+  View()
+```
+
+
